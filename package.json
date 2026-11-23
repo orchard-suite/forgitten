@@ -1,0 +1,49 @@
+{
+  "name": "forgitten",
+  "version": "0.1.9",
+  "private": true,
+  "description": "Find the work you forgot to push, on every machine you own.",
+  "license": "MIT",
+  "homepage": "https://github.com/orchard-suite/forgitten",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/orchard-suite/forgitten.git"
+  },
+  "bugs": "https://github.com/orchard-suite/forgitten/issues",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "AUTH_MODE=none node --watch src/server/main.ts & vite",
+    "dev:server": "AUTH_MODE=none node --watch src/server/main.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node src/server/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "hono": "4.13.13",
+    "jose": "6.2.13",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@tanstack/react-query": "5.104.5",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.3"
+  }
+}

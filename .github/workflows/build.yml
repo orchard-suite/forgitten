@@ -1,0 +1,154 @@
+name: Build
+
+# The release workflow calls this with the new tag, such as v0.1.0. It publishes
+# ghcr.io/orchard-suite/forgitten:0.1.0 and :latest, signs it with cosign keyless as
+# this workflow's GitHub identity, attests a syft SBOM to it, and attaches the
+# CLI for every platform to the tag's GitHub release with a SHA256SUMS file the
+# install scripts check each download against.
+# The tag must match the version in package.json; that file is the source of truth.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+env:
+  REGISTRY: ghcr.io/orchard-suite
+  IMAGE: forgitten
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Check the tag matches package.json
+        id: version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          version=$(jq -r .version package.json)
+          if [ "v$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match package.json version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  image:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Needed to get an OIDC token for keyless signing.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        id: push
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ needs.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=The forgitten hub: one page for the work your machines have not pushed
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      # Sign and attest by digest, never by tag: a tag can move.
+      - name: Sign the image
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "${REGISTRY}/${IMAGE}@${DIGEST}"
+      - name: Attest the SBOM
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          syft "${REGISTRY}/${IMAGE}@${DIGEST}" -o spdx-json > sbom.spdx.json
+          cosign attest --yes --predicate sbom.spdx.json --type spdxjson "${REGISTRY}/${IMAGE}@${DIGEST}"
+      - name: Verify what was published
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          cosign verify "${REGISTRY}/${IMAGE}@${DIGEST}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp '^https://github.com/${{ github.repository }}/'
+          cosign verify-attestation "${REGISTRY}/${IMAGE}@${DIGEST}" --type spdxjson \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp '^https://github.com/${{ github.repository }}/' > /dev/null
+
+  cli:
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            rids: linux-x64 linux-arm64 win-x64 win-arm64
+          # Built on a Mac so the binaries carry the signature Apple Silicon requires to run them.
+          - runner: macos-latest
+            rids: osx-arm64 osx-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish
+        run: |
+          mkdir -p assets
+          for rid in ${{ matrix.rids }}; do
+            dotnet publish cli/Forgitten/Forgitten.csproj -c Release -r "$rid" --self-contained true -p:PublishSingleFile=true -o "publish/$rid"
+            case "$rid" in
+              win-*) cp "publish/$rid/forgitten.exe" "assets/forgitten-$rid.exe" ;;
+              *) cp "publish/$rid/forgitten" "assets/forgitten-$rid" ;;
+            esac
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cli-${{ matrix.runner }}
+          path: assets/*
+          if-no-files-found: error
+
+  release:
+    needs: [version, image, cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cli-*
+          path: assets
+          merge-multiple: true
+      - name: Attach the CLI to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          (cd assets && sha256sum forgitten-* > SHA256SUMS)
+          gh release upload "$TAG" assets/* --repo "${GITHUB_REPOSITORY}" --clobber

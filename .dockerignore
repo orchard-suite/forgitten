@@ -1,0 +1,12 @@
+node_modules
+dist
+data
+cli
+publish
+scripts
+.git
+.claude
+.idea
+logs
+*.md
+.github

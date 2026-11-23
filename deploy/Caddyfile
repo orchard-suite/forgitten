@@ -1,0 +1,10 @@
+# One hostname, two doors. /ingest is the device API, which checks an Entra
+# access token itself. Everything else goes through the login proxy.
+{$FORGITTEN_HOST} {
+	handle /ingest/* {
+		reverse_proxy hub:8081
+	}
+	handle {
+		reverse_proxy login:4180
+	}
+}

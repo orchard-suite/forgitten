@@ -1,0 +1,80 @@
+# A hub on one host: the hub, its login proxy, and a TLS front door.
+#
+#   cp deploy/.env.example deploy/.env    # then fill it in
+#   docker compose -f deploy/compose.yml up -d
+#
+# Browsers reach the web app only through the login proxy. Devices reach
+# /ingest directly; the hub checks their Entra access token itself.
+name: forgitten
+
+services:
+  hub:
+    image: ghcr.io/orchard-suite/forgitten:${FORGITTEN_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://${FORGITTEN_HOST:?set FORGITTEN_HOST in deploy/.env}
+      # The session surface trusts the login proxy's identity headers, so it
+      # listens only on the session network, which nothing but the proxy joins.
+      HOST: hub-session
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:?set ENTRA_TENANT_ID in deploy/.env}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:?set ENTRA_CLIENT_ID in deploy/.env}
+    volumes:
+      - data:/data
+    networks:
+      edge:
+      session:
+        aliases: [hub-session]
+
+  login:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+    restart: unless-stopped
+    networks: [edge, session]
+    command:
+      - --provider=entra-id
+      - --oidc-issuer-url=https://login.microsoftonline.com/${ENTRA_TENANT_ID}/v2.0
+      # offline_access asks Entra for a refresh token, which --cookie-refresh needs.
+      - --scope=openid profile email offline_access
+      - --email-domain=*
+      # Entra does not set email_verified. Who gets in is decided by the app
+      # registration's assignment requirement, not by the email.
+      - --insecure-oidc-allow-unverified-email=true
+      - --pass-user-headers=true
+      - --redirect-url=https://${FORGITTEN_HOST}/oauth2/callback
+      - --upstream=http://hub-session:8080
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      # Only Caddy, on the compose networks, sends it X-Forwarded-* headers.
+      - --trusted-proxy-ip=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - --skip-provider-button=true
+      - --cookie-name=_forgitten
+      - --cookie-secure=true
+      - --cookie-samesite=lax
+      - --cookie-expire=168h
+      - --cookie-refresh=1h
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: ${ENTRA_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?set OAUTH2_PROXY_CLIENT_SECRET in deploy/.env}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?set OAUTH2_PROXY_COOKIE_SECRET in deploy/.env}
+
+  # Gets a certificate for FORGITTEN_HOST and sends each request to its door.
+  front:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      FORGITTEN_HOST: ${FORGITTEN_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    networks: [edge]
+
+networks:
+  edge:
+  session:
+    internal: true
+
+volumes:
+  data:
+  caddy:
