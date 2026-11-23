@@ -1,7 +1,7 @@
 # The hub. Build the web app, then ship the server source as-is: Node 24 runs
 # TypeScript directly, so the server has no build step. The CLI is not in this
 # image; it is published as a binary per platform on each release.
-FROM node:24.22.0-alpine AS build
+FROM node:24.22.3-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -9,7 +9,7 @@ COPY vite.config.ts tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24.22.0-alpine
+FROM node:24.22.3-alpine
 ENV NODE_ENV=production \
     PORT=8080 \
     INGEST_PORT=8081 \
