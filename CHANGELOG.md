@@ -14,6 +14,16 @@ All notable changes to this project will be documented in this file. See [standa
 
 * make the cookie secret url-safe base64 ([c1499bd](https://github.com/orchard-suite/forgitten/commit/c1499bdf8ec899e388946ce8b13115c8e1d9d981))
 
+## [1.0.0](https://github.com/orchard-suite/forgitten/compare/v0.1.9...v1.0.0) (2026-11-23)
+
+### ⚠ BREAKING CHANGES
+
+* **forgitten:** open the source in orchard ([6091a46](https://github.com/orchard-suite/forgitten/commit/6091a46d1ba942bc82f024709403620acf930c18))
+
+### Features
+
+* **forgitten:** open the source in orchard ([6091a46](https://github.com/orchard-suite/forgitten/commit/6091a46d1ba942bc82f024709403620acf930c18))
+
 ## [0.1.9](https://github.com/orchard-suite/forgitten/compare/v0.1.8...v0.1.9) (2026-11-10)
 
 ### Features
