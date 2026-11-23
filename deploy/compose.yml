@@ -58,7 +58,7 @@ services:
 
   # Gets a certificate for FORGITTEN_HOST and sends each request to its door.
   front:
-    image: caddy:2.11.7-alpine
+    image: caddy:2.11.9-alpine
     restart: unless-stopped
     ports:
       - "80:80"
